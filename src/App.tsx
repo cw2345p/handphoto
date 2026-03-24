@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
+
+// Defensive constructor helpers for MediaPipe in Vite bundles
+const HandsConstructor = (Hands as any).Hands || Hands;
+const CameraConstructor = (Camera as any).Camera || Camera;
 import neutralDefault from '../photo/neutral.png';
 import sadDefault from '../photo/sad.png';
 import happyDefault from '../photo/happy.png';
@@ -34,8 +38,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    const hands = new (HandsConstructor as any)({
+      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
 
     hands.setOptions({
@@ -48,12 +52,12 @@ const App: React.FC = () => {
     hands.onResults((results: Results) => {
       const canvasCtx = canvasRef.current!.getContext('2d')!;
       canvasCtx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
-      
+
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         for (const landmarks of results.multiHandLandmarks) {
           drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
           drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
-          
+
           processGesture(landmarks);
         }
       } else {
@@ -62,7 +66,7 @@ const App: React.FC = () => {
       }
     });
 
-    const camera = new Camera(videoRef.current, {
+    const camera = new (CameraConstructor as any)(videoRef.current, {
       onFrame: async () => {
         await hands.send({ image: videoRef.current! });
       },
@@ -132,23 +136,23 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        style={{ display: 'none' }} 
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
         accept="image/*"
         onChange={handleFileChange}
       />
-      
+
       <div className="gesture-status">
         Gesture: {recognizedGesture}
       </div>
 
       <div className="gallery-container">
-        <img 
+        <img
           key={photos[currentPhotoIdx].url} // Key to trigger re-animation
-          src={photos[currentPhotoIdx].url} 
-          alt={photos[currentPhotoIdx].name} 
+          src={photos[currentPhotoIdx].url}
+          alt={photos[currentPhotoIdx].name}
           className="photo-display active"
         />
       </div>
