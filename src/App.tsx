@@ -1,15 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
-import { Camera } from '@mediapipe/camera_utils';
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
-
-// Defensive constructor helpers for MediaPipe in Vite bundles
-const HandsConstructor = (Hands as any).Hands || Hands;
-const CameraConstructor = (Camera as any).Camera || Camera;
 import neutralDefault from '../photo/neutral.png';
 import sadDefault from '../photo/sad.png';
 import happyDefault from '../photo/happy.png';
 import surpriseDefault from '../photo/surprise.png';
+
+// Type definitions for global MediaPipe objects
+declare global {
+  interface Window {
+    Hands: any;
+    Camera: any;
+    drawConnectors: any;
+    drawLandmarks: any;
+    HAND_CONNECTIONS: any;
+  }
+}
 
 interface PhotoItem {
   id: number;
@@ -38,46 +42,59 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    const hands = new (HandsConstructor as any)({
-      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
-
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-
-    hands.onResults((results: Results) => {
-      const canvasCtx = canvasRef.current!.getContext('2d')!;
-      canvasCtx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
-
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        for (const landmarks of results.multiHandLandmarks) {
-          drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-          drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
-
-          processGesture(landmarks);
-        }
-      } else {
-        setRecognizedGesture('Fist (주먹)');
-        setCurrentPhotoIdx(0);
+    // Wait for MediaPipe to load if not already ready
+    const initHands = () => {
+      if (!window.Hands || !window.Camera) {
+          setTimeout(initHands, 100);
+          return;
       }
-    });
 
-    const camera = new (CameraConstructor as any)(videoRef.current, {
-      onFrame: async () => {
-        await hands.send({ image: videoRef.current! });
-      },
-      width: 640,
-      height: 480,
-    });
-    camera.start();
+      const hands = new window.Hands({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      });
+
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+
+      hands.onResults((results: any) => {
+        const canvasCtx = canvasRef.current!.getContext('2d')!;
+        canvasCtx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+        
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+          for (const landmarks of results.multiHandLandmarks) {
+            window.drawConnectors(canvasCtx, landmarks, window.HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+            window.drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+            processGesture(landmarks);
+          }
+        } else {
+          setRecognizedGesture('Fist (주먹)');
+          setCurrentPhotoIdx(0);
+        }
+      });
+
+      const camera = new window.Camera(videoRef.current!, {
+        onFrame: async () => {
+          await hands.send({ image: videoRef.current! });
+        },
+        width: 640,
+        height: 480,
+      });
+      camera.start();
+
+      return { hands, camera };
+    };
+
+    const instance = initHands();
 
     return () => {
-      camera.stop();
-      hands.close();
+      if (instance) {
+        instance.camera.stop();
+        instance.hands.close();
+      }
     };
   }, []);
 
@@ -131,30 +148,17 @@ const App: React.FC = () => {
       const newUrl = URL.createObjectURL(file);
       setPhotos(prev => prev.map(p => p.id === activeUploadId ? { ...p, url: newUrl } : p));
     }
-    event.target.value = ''; // Reset for same file upload
+    event.target.value = '';
   };
 
   return (
     <div className="app-container">
-      <input
-        type="file"
-        ref={fileInputRef}
-        style={{ display: 'none' }}
-        accept="image/*"
-        onChange={handleFileChange}
-      />
-
-      <div className="gesture-status">
-        Gesture: {recognizedGesture}
-      </div>
+      <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleFileChange} />
+      
+      <div className="gesture-status">Gesture: {recognizedGesture}</div>
 
       <div className="gallery-container">
-        <img
-          key={photos[currentPhotoIdx].url} // Key to trigger re-animation
-          src={photos[currentPhotoIdx].url}
-          alt={photos[currentPhotoIdx].name}
-          className="photo-display active"
-        />
+        <img key={photos[currentPhotoIdx].url} src={photos[currentPhotoIdx].url} alt={photos[currentPhotoIdx].name} className="photo-display active" />
       </div>
 
       <div className="instructions">
